@@ -16,6 +16,7 @@
         status: signal.status,
         risk: signal.riskLevel,
         conclusion: signal.versions[0] ?? null,
+        reviewSheets: signal.reviewSheets,
         audit: signal.audit
       }))
     };

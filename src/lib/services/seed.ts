@@ -78,6 +78,7 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-09-24T10:00:00.000Z'
       }
     ],
+    reviewSheets: [],
     audit: [
       {
         id: 'A-018-01',
@@ -156,6 +157,7 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-09-25T04:25:00.000Z'
       }
     ],
+    reviewSheets: [],
     audit: [
       {
         id: 'A-015-01',
@@ -217,6 +219,7 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-08-18T09:30:00.000Z'
       }
     ],
+    reviewSheets: [],
     audit: [
       {
         id: 'A-011-01',
@@ -295,7 +298,74 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-09-28T11:40:00.000Z'
       }
     ],
+    reviewSheets: [
+      {
+        id: 'RVW-019-01',
+        target: 'action_required',
+        reason: '拆机证据确认批次性焊接缺陷，申请进入风险处置并准备风险沟通。',
+        status: 'countersigned',
+        revision: 1,
+        versionId: 'V-019-01',
+        batchSnapshot: ['D9-260722'],
+        openTaskSnapshot: [
+          { id: 'T-019-01', title: '完成同批全量风险评估', owner: '顾岚', dueAt: '2026-09-30' },
+          { id: 'T-019-02', title: '起草医疗机构风险沟通函', owner: '沈瑜', dueAt: '2026-09-30' }
+        ],
+        evidenceFingerprint: JSON.stringify([
+          ['E-019-01', '过温保护触发事件报告', 'strong', 'D9-260722', '不良事件报告 AE-260921', '设备未造成人员伤害，但备用电池无法完成充电。'],
+          ['E-019-02', '首批拆机与热成像记录', 'strong', 'D9-260722', '质量实验室', '两套模组焊点阻抗偏高，温度高于控制上限。']
+        ]),
+        openedBy: '顾岚',
+        openedAt: '2026-09-28T11:45:00.000Z',
+        handlerSignature: {
+          role: 'handler',
+          actor: '顾岚',
+          checklist: {
+            confirmsVersion: true,
+            confirmsBatches: true,
+            confirmedTaskIds: ['T-019-01', 'T-019-02']
+          },
+          signedAt: '2026-09-28T11:45:00.000Z',
+          signedRevision: 0
+        },
+        reviewerSignature: {
+          role: 'reviewer',
+          actor: '沈瑜',
+          checklist: {
+            confirmsVersion: true,
+            confirmsBatches: true,
+            confirmedTaskIds: ['T-019-01', 'T-019-02']
+          },
+          signedAt: '2026-09-28T12:05:00.000Z',
+          signedRevision: 0
+        },
+        countersignedAt: '2026-09-28T12:05:00.000Z',
+        invalidatedAt: null,
+        invalidatedReason: null
+      }
+    ],
     audit: [
+      {
+        id: 'A-019-03',
+        actor: '沈瑜',
+        action: '状态流转',
+        detail: '双人会签完成：复核中 -> 待处置；依据复核单 RVW-019-01。',
+        createdAt: '2026-09-28T12:05:00.000Z'
+      },
+      {
+        id: 'A-019-02',
+        actor: '沈瑜',
+        action: '复核人会签',
+        detail: '复核单 RVW-019-01 经独立复核人逐项确认结论版本、关联批号与 2 项未完成任务后完成会签。',
+        createdAt: '2026-09-28T12:05:00.000Z'
+      },
+      {
+        id: 'A-019-04',
+        actor: '顾岚',
+        action: '发起复核',
+        detail: '生成待签复核单 RVW-019-01（目标：待处置，绑定 V1），处置人已签署，等待独立复核人逐项确认。',
+        createdAt: '2026-09-28T11:45:00.000Z'
+      },
       {
         id: 'A-019-01',
         actor: '顾岚',

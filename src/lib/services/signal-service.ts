@@ -41,6 +41,7 @@ export function exportSignalReport(id: string) {
     riskLevel: signal.riskLevel,
     conclusion: signal.versions[0]?.summary ?? '尚未形成核查结论',
     evidence: signal.evidence,
+    reviewSheets: signal.reviewSheets,
     audit: signal.audit
   };
 

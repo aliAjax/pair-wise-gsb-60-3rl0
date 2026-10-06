@@ -47,11 +47,46 @@ export const versionSchema = z.object({
   rationale: z.string().trim().min(6, '请填写判断依据')
 });
 
+export const reviewTargets = ['action_required', 'closed'] as const;
+export const reviewRoles = ['handler', 'reviewer'] as const;
+
+// 高严重度信号进入待处置或关闭前，由处置人发起并签署待签复核单
+export const requestReviewSchema = z.object({
+  id: z.string().min(1),
+  target: z.enum(reviewTargets, { message: '请选择复核目标状态' }),
+  handler: z.string().trim().min(2, '请填写处置人姓名'),
+  reason: z.string().trim().min(4, '请填写发起复核的依据'),
+  versionId: z.string().min(1, '复核单必须绑定结论版本'),
+  storeToken: z.string().min(1)
+});
+
+// 独立复核人逐项确认结论版本、关联批号与未完成调查任务后才能签署
+export const signReviewSchema = z.object({
+  id: z.string().min(1),
+  sheetId: z.string().min(1),
+  role: z.enum(reviewRoles),
+  actor: z.string().trim().min(2, '请填写签署人姓名'),
+  baseRevision: z.coerce.number().int().min(0),
+  storeToken: z.string().min(1),
+  confirmsVersion: z.literal('on', { message: '请逐项确认结论版本' }),
+  confirmsBatches: z.literal('on', { message: '请逐项确认关联批号' }),
+  confirmsTask: z.array(z.string()).default([])
+});
+
+export const taskSchema = z.object({
+  id: z.string().min(1),
+  taskId: z.string().min(1),
+  status: z.enum(['open', 'in_progress', 'done']),
+  actor: z.string().trim().min(2, '请填写操作人')
+});
+
 export type SignalStatus = (typeof signalStatuses)[number];
 export type RiskLevel = (typeof riskLevels)[number];
 export type EvidenceStrength = (typeof evidenceStrengths)[number];
 export type SignalSourceType = z.infer<typeof createSignalSchema>['sourceType'];
 export type Disposition = z.infer<typeof versionSchema>['disposition'];
+export type ReviewTarget = (typeof reviewTargets)[number];
+export type ReviewRole = (typeof reviewRoles)[number];
 
 export interface EvidenceItem {
   id: string;
@@ -90,6 +125,49 @@ export interface AuditEntry {
   createdAt: string;
 }
 
+export interface ReviewChecklist {
+  confirmsVersion: boolean;
+  confirmsBatches: boolean;
+  confirmedTaskIds: string[];
+}
+
+export interface ReviewSignature {
+  role: ReviewRole;
+  actor: string;
+  checklist: ReviewChecklist;
+  signedAt: string;
+  // 签署基于的复核单修订号；复核单内容变化后旧签署不再生效
+  signedRevision: number;
+}
+
+export interface ReviewSheet {
+  id: string;
+  // 会签目标：进入待处置或关闭
+  target: ReviewTarget;
+  reason: string;
+  status: 'pending' | 'countersigned' | 'invalidated';
+  revision: number;
+  // 发起时冻结的快照：结论版本、关联批号、未完成任务与证据指纹
+  versionId: string;
+  batchSnapshot: string[];
+  openTaskSnapshot: Array<{ id: string; title: string; owner: string; dueAt: string }>;
+  evidenceFingerprint: string;
+  openedBy: string;
+  openedAt: string;
+  // 处置人先签署，独立复核人后签署；同槽位至多一份有效签署
+  handlerSignature: ReviewSignature | null;
+  reviewerSignature: ReviewSignature | null;
+  countersignedAt: string | null;
+  invalidatedAt: string | null;
+  invalidatedReason: string | null;
+}
+
+/** 高严重度信号：高风险及严重风险，必须双人会签后才能进入待处置或关闭 */
+export function isHighSeverity(signal: Pick<SignalCase, 'riskLevel'> | RiskLevel): boolean {
+  const level = typeof signal === 'string' ? signal : signal.riskLevel;
+  return level === 'high' || level === 'critical';
+}
+
 export interface SignalCase {
   id: string;
   title: string;
@@ -111,6 +189,7 @@ export interface SignalCase {
   evidence: EvidenceItem[];
   tasks: InvestigationTask[];
   versions: CaseVersion[];
+  reviewSheets: ReviewSheet[];
   audit: AuditEntry[];
   reopenedCount: number;
 }

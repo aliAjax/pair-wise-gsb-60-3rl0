@@ -13,13 +13,24 @@
       .map((task) => ({ ...task, signalId: signal.id }))
   );
 
+  $: pendingReviews = signals.flatMap((signal) =>
+    signal.reviewSheets
+      .filter((sheet) => sheet.status === 'pending')
+      .map((sheet) => ({
+        sheet,
+        signalId: signal.id,
+        product: signal.product,
+        missing: !sheet.handlerSignature ? '处置人' : '独立复核人'
+      }))
+  );
+
   $: metrics = [
     { label: '开放信号', value: openSignals.length, note: '含调查、观察与处置队列' },
-    { label: '高及以上风险', value: criticalSignals.length, note: '需复核人优先确认' },
+    { label: '高及以上风险', value: criticalSignals.length, note: '需双人会签后流转' },
     {
-      label: '未关闭任务',
-      value: signals.flatMap((signal) => signal.tasks).filter((task) => task.status !== 'done').length,
-      note: '跨信号调查任务'
+      label: '待签复核单',
+      value: pendingReviews.length,
+      note: '等待处置人或独立复核人签署'
     },
     { label: '逾期任务', value: overdueTasks.length, note: '按任务截止日计算' }
   ];
@@ -79,6 +90,14 @@
       <p class="text-xs text-surface-500-400">优先处理逾期及高风险事项</p>
     </div>
     <div class="space-y-4 p-4">
+      {#each pendingReviews.slice(0, 4) as item}
+        <a class="block border-l-2 border-red-500 pl-3 hover:opacity-80" href={`/signals/${item.signalId}`}>
+          <p class="text-sm font-medium">待签复核单 · 缺{item.missing}签署</p>
+          <p class="mt-1 text-xs text-surface-500-400">
+            {item.signalId} · {item.product} · 目标{item.sheet.target === 'closed' ? '关闭' : '待处置'}
+          </p>
+        </a>
+      {/each}
       {#each signals.flatMap((signal) => signal.tasks.map((task) => ({ ...task, signalId: signal.id }))).filter((task) => task.status !== 'done').slice(0, 5) as task}
         <div class="border-l-2 border-amber-500 pl-3">
           <p class="text-sm font-medium">{task.title}</p>
