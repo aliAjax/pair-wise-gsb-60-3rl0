@@ -7,7 +7,10 @@
     "dev": "vite --host 0.0.0.0 --port 18460",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 18460",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test:review": "node --import tsx --loader ./scripts/app-shim-loader.mjs scripts/review-flow.test.ts",
+    "test:store": "node --import tsx --loader ./scripts/app-shim-loader.mjs scripts/signal-store.test.ts",
+    "test": "npm run test:review && npm run test:store"
   },
   "devDependencies": {
     "@skeletonlabs/skeleton": "^2.11.0",
@@ -20,6 +23,7 @@
     "svelte": "^5.57.1",
     "svelte-check": "^4.7.6",
     "tailwindcss": "^3.4.19",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"
   },

@@ -3,41 +3,44 @@
   import type { SubmitFunction } from '@sveltejs/kit';
   import EvidenceMatrix from '$lib/components/EvidenceMatrix.svelte';
   import RiskBadge from '$lib/components/RiskBadge.svelte';
-  import type { AuditEntry, CaseVersion, EvidenceItem, SignalStatus } from '$lib/models/signal';
+  import type { CaseVersion, EvidenceItem, InvestigationTask } from '$lib/models/signal';
   import { exportSignalReport } from '$lib/services/signal-service';
   import { signalStore } from '$lib/stores/signal-store';
   import type { ActionData, PageData } from './$types';
+  import ReviewPanel from './ReviewPanel.svelte';
 
   export let data: PageData;
   export let form: ActionData;
 
+  let notice = '';
+
   $: signal = $signalStore.find((item) => item.id === data.id);
   $: nextVersion = (signal?.versions[0]?.version ?? 0) + 1;
 
-  const statusOptions: Array<{ value: SignalStatus; label: string }> = [
-    { value: 'investigating', label: '转入调查' },
-    { value: 'observed', label: '持续观察' },
-    { value: 'action_required', label: '进入风险处置' },
-    { value: 'review', label: '提交复核' },
-    { value: 'closed', label: '关闭信号' }
-  ];
+  const taskStatusLabels: Record<InvestigationTask['status'], string> = {
+    open: '待处理',
+    in_progress: '进行中',
+    done: '已完成'
+  };
 
-  const transitionHandler: SubmitFunction = () => {
+  function showError(message: string) {
+    notice = message;
+  }
+
+  const taskHandler: SubmitFunction = () => {
     return async ({ result, update }) => {
       if (result.type === 'success') {
         const payload = result.data as {
-          transition?: { id: string; nextStatus: SignalStatus; reason: string; actor: string };
+          updateTask?: { id: string; taskId: string; status: InvestigationTask['status'] };
         };
-        if (payload.transition) {
-          signalStore.transition(
-            payload.transition.id,
-            payload.transition.nextStatus,
-            payload.transition.reason,
-            payload.transition.actor
-          );
+        const req = payload.updateTask;
+        if (req) {
+          const res = await signalStore.updateTaskStatus(req.id, req.taskId, req.status);
+          if (!res.ok) showError(res.message);
+          else notice = '';
         }
       }
-      await update({ reset: true });
+      await update({ reset: false });
     };
   };
 </script>
@@ -66,6 +69,9 @@
 
   {#if form?.message}
     <div class="mb-5 rounded border border-error-300 bg-error-50 p-3 text-sm text-error-900">{form.message}</div>
+  {/if}
+  {#if notice}
+    <div class="mb-5 rounded border border-error-300 bg-error-50 p-3 text-sm text-error-900" role="alert">{notice}</div>
   {/if}
 
   <section class="workspace-grid mb-6">
@@ -96,38 +102,18 @@
     </article>
 
     <aside class="col-span-12 rounded border border-surface-300-700 bg-surface-100-900 p-4 xl:col-span-4">
-      <h2 class="font-semibold">状态流转</h2>
-      <p class="mt-1 text-xs text-surface-500-400">每次流转都记录依据、操作人和时间。</p>
-      <form
-        class="mt-4 space-y-3"
-        method="POST"
-        action="?/transition"
-        use:enhance={transitionHandler}
-      >
-        <input type="hidden" name="id" value={signal.id} />
-        <label class="block">
-          <span class="mb-1 block text-sm font-medium">目标状态</span>
-          <select class="select" name="nextStatus">
-            {#each statusOptions as option}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
-        </label>
-        <label class="block">
-          <span class="mb-1 block text-sm font-medium">操作人</span>
-          <input class="input" name="actor" value={signal.owner} />
-        </label>
-        <label class="block">
-          <span class="mb-1 block text-sm font-medium">流转依据</span>
-          <textarea class="textarea" name="reason" rows="3" placeholder="说明新增证据、风险判断或复核结论"></textarea>
-        </label>
-        <button class="btn w-full variant-filled-primary" type="submit">提交状态流转</button>
-      </form>
+      <h2 class="font-semibold">状态流转与双人复核</h2>
+      <p class="mt-1 text-xs text-surface-500-400">
+        高及以上风险信号须由处置人与独立复核人先后签署后，才能进入待处置或关闭。
+      </p>
+      <div class="mt-4">
+        <ReviewPanel {signal} />
+      </div>
 
       {#if signal.status === 'closed'}
         <div class="section-rule mt-5 pt-5">
           <h3 class="font-medium">新事件重新打开</h3>
-          <p class="mt-1 text-xs text-surface-500-400">关闭信号收到新报告时，不允许静默修改结论。</p>
+          <p class="mt-1 text-xs text-surface-500-400">关闭信号收到新报告时，不允许静默修改结论；重新打开后原关闭签署失效。</p>
           <form
             class="mt-3 space-y-3"
             method="POST"
@@ -137,7 +123,12 @@
                 if (result.type === 'success') {
                   const payload = result.data as { reopen?: { id: string; actor: string; reason: string } };
                   if (payload.reopen) {
-                    signalStore.reopen(payload.reopen.id, payload.reopen.actor, payload.reopen.reason);
+                    const res = await signalStore.reopen(
+                      payload.reopen.id,
+                      payload.reopen.actor,
+                      payload.reopen.reason
+                    );
+                    if (!res.ok) showError(res.message);
                   }
                 }
                 await update({ reset: true });
@@ -164,110 +155,179 @@
     <EvidenceMatrix evidence={signal.evidence} />
   </section>
 
+  <section class="mb-6 rounded border border-surface-300-700 bg-surface-100-900 p-4">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 class="font-semibold">调查任务</h2>
+        <p class="mt-1 text-xs text-surface-500-400">
+          复核人将逐项核对未完成任务；关闭复核要求任务全部完成。
+        </p>
+      </div>
+      <span class="badge">
+        {signal.tasks.filter((task) => task.status !== 'done').length} 项未完成
+      </span>
+    </div>
+    <div class="mt-4 space-y-2">
+      {#each signal.tasks as task (task.id)}
+        <form
+          method="POST"
+          action="?/updateTask"
+          use:enhance={taskHandler}
+          class="flex flex-wrap items-center justify-between gap-3 rounded border border-surface-300-700 p-3"
+        >
+          <input type="hidden" name="id" value={signal.id} />
+          <input type="hidden" name="taskId" value={task.id} />
+          <div>
+            <p class="text-sm font-medium">{task.title}</p>
+            <p class="text-xs text-surface-500-400">{task.owner} · 截止 {task.dueAt}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select class="select" name="status" disabled={signal.status === 'closed'}>
+              {#each Object.entries(taskStatusLabels) as [value, label]}
+                <option value={value} selected={task.status === value}>{label}</option>
+              {/each}
+            </select>
+            {#if signal.status !== 'closed'}
+              <button class="btn variant-soft-primary" type="submit">更新</button>
+            {/if}
+          </div>
+        </form>
+      {/each}
+    </div>
+  </section>
+
   <div class="grid gap-6 xl:grid-cols-2">
     <section class="rounded border border-surface-300-700 bg-surface-100-900 p-4">
       <h2 class="font-semibold">补充核查证据</h2>
-      <form
-        class="mt-4 grid gap-4 md:grid-cols-2"
-        method="POST"
-        action="?/evidence"
-        use:enhance={() =>
-          async ({ result, update }) => {
-            if (result.type === 'success') {
-              const payload = result.data as { evidence?: EvidenceItem; actor?: string };
-              if (payload.evidence) signalStore.addEvidence(signal.id, payload.evidence, payload.actor ?? signal.owner);
-            }
-            await update({ reset: true });
-          }}
-      >
-        <input type="hidden" name="id" value={signal.id} />
-        <label>
-          <span class="mb-1 block text-sm font-medium">证据类型</span>
-          <select class="select" name="evidenceType">
-            <option value="complaint">投诉</option>
-            <option value="repair">维修</option>
-            <option value="adverse_event">不良事件</option>
-            <option value="field_report">现场报告</option>
-            <option value="test">测试</option>
-            <option value="literature">文献</option>
-          </select>
-        </label>
-        <label>
-          <span class="mb-1 block text-sm font-medium">证据强度</span>
-          <select class="select" name="strength">
-            <option value="strong">强支持</option>
-            <option value="moderate">中等支持</option>
-            <option value="weak">弱支持</option>
-            <option value="contrary">相反证据</option>
-          </select>
-        </label>
-        <label>
-          <span class="mb-1 block text-sm font-medium">证据名称</span>
-          <input class="input" name="title" />
-        </label>
-        <label>
-          <span class="mb-1 block text-sm font-medium">来源</span>
-          <input class="input" name="source" />
-        </label>
-        <label>
-          <span class="mb-1 block text-sm font-medium">关联批号</span>
-          <input class="input" name="batch" value={signal.batch} />
-        </label>
-        <label>
-          <span class="mb-1 block text-sm font-medium">录入人</span>
-          <input class="input" name="actor" value={signal.owner} />
-        </label>
-        <label class="md:col-span-2">
-          <span class="mb-1 block text-sm font-medium">核查说明</span>
-          <textarea class="textarea" name="note" rows="3"></textarea>
-        </label>
-        <div class="md:col-span-2">
-          <button class="btn variant-filled-primary" type="submit">加入证据矩阵</button>
-        </div>
-      </form>
+      {#if signal.status === 'closed'}
+        <p class="mt-3 rounded border border-surface-300-700 bg-surface-200-800 p-3 text-xs text-surface-600-300">
+          信号已关闭，证据矩阵只读；新证据请先重新打开信号。
+        </p>
+      {:else}
+        <form
+          class="mt-4 grid gap-4 md:grid-cols-2"
+          method="POST"
+          action="?/evidence"
+          use:enhance={() =>
+            async ({ result, update }) => {
+              if (result.type === 'success') {
+                const payload = result.data as { evidence?: EvidenceItem; actor?: string };
+                if (payload.evidence) {
+                  const res = await signalStore.addEvidence(
+                    signal.id,
+                    payload.evidence,
+                    payload.actor ?? signal.owner
+                  );
+                  if (!res.ok) showError(res.message);
+                  else notice = '';
+                }
+              }
+              await update({ reset: true });
+            }}
+        >
+          <input type="hidden" name="id" value={signal.id} />
+          <label>
+            <span class="mb-1 block text-sm font-medium">证据类型</span>
+            <select class="select" name="evidenceType">
+              <option value="complaint">投诉</option>
+              <option value="repair">维修</option>
+              <option value="adverse_event">不良事件</option>
+              <option value="field_report">现场报告</option>
+              <option value="test">测试</option>
+              <option value="literature">文献</option>
+            </select>
+          </label>
+          <label>
+            <span class="mb-1 block text-sm font-medium">证据强度</span>
+            <select class="select" name="strength">
+              <option value="strong">强支持</option>
+              <option value="moderate">中等支持</option>
+              <option value="weak">弱支持</option>
+              <option value="contrary">相反证据</option>
+            </select>
+          </label>
+          <label>
+            <span class="mb-1 block text-sm font-medium">证据名称</span>
+            <input class="input" name="title" />
+          </label>
+          <label>
+            <span class="mb-1 block text-sm font-medium">来源</span>
+            <input class="input" name="source" />
+          </label>
+          <label>
+            <span class="mb-1 block text-sm font-medium">关联批号</span>
+            <input class="input" name="batch" value={signal.batch} />
+          </label>
+          <label>
+            <span class="mb-1 block text-sm font-medium">录入人</span>
+            <input class="input" name="actor" value={signal.owner} />
+          </label>
+          <label class="md:col-span-2">
+            <span class="mb-1 block text-sm font-medium">核查说明</span>
+            <textarea class="textarea" name="note" rows="3"></textarea>
+          </label>
+          <div class="md:col-span-2">
+            <button class="btn variant-filled-primary" type="submit">加入证据矩阵</button>
+          </div>
+        </form>
+      {/if}
     </section>
 
     <section class="rounded border border-surface-300-700 bg-surface-100-900 p-4">
       <h2 class="font-semibold">形成结论版本</h2>
-      <form
-        class="mt-4 grid gap-4 md:grid-cols-2"
-        method="POST"
-        action="?/version"
-        use:enhance={() =>
-          async ({ result, update }) => {
-            if (result.type === 'success') {
-              const payload = result.data as { version?: CaseVersion; actor?: string };
-              if (payload.version) signalStore.addVersion(signal.id, payload.version, payload.actor ?? signal.owner);
-            }
-            await update({ reset: true });
-          }}
-      >
-        <input type="hidden" name="id" value={signal.id} />
-        <input type="hidden" name="versionNumber" value={nextVersion} />
-        <label>
-          <span class="mb-1 block text-sm font-medium">版本作者</span>
-          <input class="input" name="author" value={signal.owner} />
-        </label>
-        <label>
-          <span class="mb-1 block text-sm font-medium">建议处置</span>
-          <select class="select" name="disposition">
-            <option value="continue_observation">继续观察</option>
-            <option value="risk_communication">风险沟通</option>
-            <option value="corrective_action">纠正措施</option>
-          </select>
-        </label>
-        <label class="md:col-span-2">
-          <span class="mb-1 block text-sm font-medium">结论摘要</span>
-          <textarea class="textarea" name="summary" rows="2"></textarea>
-        </label>
-        <label class="md:col-span-2">
-          <span class="mb-1 block text-sm font-medium">判断依据与替代解释</span>
-          <textarea class="textarea" name="rationale" rows="3"></textarea>
-        </label>
-        <div class="md:col-span-2">
-          <button class="btn variant-filled-secondary" type="submit">保存为 V{nextVersion}</button>
-        </div>
-      </form>
+      {#if signal.status === 'closed'}
+        <p class="mt-3 rounded border border-surface-300-700 bg-surface-200-800 p-3 text-xs text-surface-600-300">
+          信号已关闭，结论版本只读；修订结论请先重新打开信号。
+        </p>
+      {:else}
+        <form
+          class="mt-4 grid gap-4 md:grid-cols-2"
+          method="POST"
+          action="?/version"
+          use:enhance={() =>
+            async ({ result, update }) => {
+              if (result.type === 'success') {
+                const payload = result.data as { version?: CaseVersion; actor?: string };
+                if (payload.version) {
+                  const res = await signalStore.addVersion(
+                    signal.id,
+                    payload.version,
+                    payload.actor ?? signal.owner
+                  );
+                  if (!res.ok) showError(res.message);
+                  else notice = '';
+                }
+              }
+              await update({ reset: true });
+            }}
+        >
+          <input type="hidden" name="id" value={signal.id} />
+          <input type="hidden" name="versionNumber" value={nextVersion} />
+          <label>
+            <span class="mb-1 block text-sm font-medium">版本作者</span>
+            <input class="input" name="author" value={signal.owner} />
+          </label>
+          <label>
+            <span class="mb-1 block text-sm font-medium">建议处置</span>
+            <select class="select" name="disposition">
+              <option value="continue_observation">继续观察</option>
+              <option value="risk_communication">风险沟通</option>
+              <option value="corrective_action">纠正措施</option>
+            </select>
+          </label>
+          <label class="md:col-span-2">
+            <span class="mb-1 block text-sm font-medium">结论摘要</span>
+            <textarea class="textarea" name="summary" rows="2"></textarea>
+          </label>
+          <label class="md:col-span-2">
+            <span class="mb-1 block text-sm font-medium">判断依据与替代解释</span>
+            <textarea class="textarea" name="rationale" rows="3"></textarea>
+          </label>
+          <div class="md:col-span-2">
+            <button class="btn variant-filled-secondary" type="submit">保存为 V{nextVersion}</button>
+          </div>
+        </form>
+      {/if}
     </section>
   </div>
 

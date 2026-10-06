@@ -55,7 +55,7 @@
         return async ({ result, update }) => {
           if (result.type === 'success') {
             const data = result.data as { signal?: SignalCase };
-            if (data.signal) signalStore.add(data.signal);
+            if (data.signal) await signalStore.add(data.signal);
             await queryClient.invalidateQueries({ queryKey: ['signals'] });
             showCreate = false;
           }

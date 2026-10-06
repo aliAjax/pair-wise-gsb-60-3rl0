@@ -1,6 +1,7 @@
 import type { SignalCase } from '$lib/models/signal';
+import { evidenceBasisFingerprint } from '$lib/services/review';
 
-export const seedSignals: SignalCase[] = [
+const rawSignals: SignalCase[] = [
   {
     id: 'SIG-2026-018',
     title: '输注泵阻塞报警集中发生于同一批管路',
@@ -94,6 +95,30 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-09-10T03:00:00.000Z'
       }
     ],
+    reviewSheets: [
+      {
+        id: 'RVW-018-01',
+        purpose: 'action_required',
+        status: 'voided',
+        fromStatus: 'investigating',
+        basisVersionId: 'V-018-01',
+        basisVersionLabel: 'V1 · 投诉与维修记录支持传感器装配异常假设，尚需现场数据确认。',
+        basisBatches: ['IP8-260401', 'IP8-260403'],
+        basisOpenTasks: [
+          { id: 'T-018-01', title: '核对现场使用环境与安装扭矩', owner: '赵珂' },
+          { id: 'T-018-02', title: '追回异常批次传感器装配记录', owner: '陈明' }
+        ],
+        basisFingerprint: '',
+        handlerSignature: { actor: '周宁', signedAt: '2026-09-24T10:05:00.000Z' },
+        reviewer: '郑敏',
+        reviewerSignature: null,
+        rejectionReason: '留样未复现且缺少现场扭矩数据，证据不足以支持批次性结论。',
+        voidedReason: '复核人退回：留样未复现且缺少现场扭矩数据，证据不足以支持批次性结论。',
+        revision: 1,
+        createdAt: '2026-09-24T10:05:00.000Z',
+        completedAt: null
+      }
+    ],
     reopenedCount: 0
   },
   {
@@ -165,6 +190,7 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-08-23T05:00:00.000Z'
       }
     ],
+    reviewSheets: [],
     reopenedCount: 0
   },
   {
@@ -226,6 +252,7 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-08-18T09:30:00.000Z'
       }
     ],
+    reviewSheets: [],
     reopenedCount: 0
   },
   {
@@ -297,6 +324,27 @@ export const seedSignals: SignalCase[] = [
     ],
     audit: [
       {
+        id: 'A-019-03',
+        actor: '韩朔',
+        action: '复核签署',
+        detail: '复核人逐项确认（结论版本、关联批号、调查任务）后签署复核单 RVW-019-01；处置人 顾岚，复核人 韩朔，双方账号独立。',
+        createdAt: '2026-09-28T13:05:00.000Z'
+      },
+      {
+        id: 'A-019-04',
+        actor: '韩朔',
+        action: '状态流转',
+        detail: '复核中 -> 待处置；依据：双人复核单 RVW-019-01 已完成双签。',
+        createdAt: '2026-09-28T13:05:00.000Z'
+      },
+      {
+        id: 'A-019-02',
+        actor: '顾岚',
+        action: '发起双人复核',
+        detail: '复核单 RVW-019-01（目的：进入待处置）已生成并由处置人签署；锁定 V1；关联批号 D9-260722；未完成调查任务 2 项。等待独立复核人签署。',
+        createdAt: '2026-09-28T12:00:00.000Z'
+      },
+      {
         id: 'A-019-01',
         actor: '顾岚',
         action: '升级风险',
@@ -304,6 +352,48 @@ export const seedSignals: SignalCase[] = [
         createdAt: '2026-09-28T11:40:00.000Z'
       }
     ],
+    reviewSheets: [
+      {
+        id: 'RVW-019-01',
+        purpose: 'action_required',
+        status: 'completed',
+        fromStatus: 'investigating',
+        basisVersionId: 'V-019-01',
+        basisVersionLabel: 'V1 · 初判为充电模组焊接缺陷，进入纠正措施与风险沟通准备。',
+        basisBatches: ['D9-260722'],
+        basisOpenTasks: [
+          { id: 'T-019-01', title: '完成同批全量风险评估', owner: '顾岚' },
+          { id: 'T-019-02', title: '起草医疗机构风险沟通函', owner: '沈瑜' }
+        ],
+        basisFingerprint: '',
+        handlerSignature: { actor: '顾岚', signedAt: '2026-09-28T12:00:00.000Z' },
+        reviewer: '韩朔',
+        reviewerSignature: {
+          actor: '韩朔',
+          signedAt: '2026-09-28T13:05:00.000Z',
+          checklist: { versionConfirmed: true, batchesConfirmed: true, tasksConfirmed: true }
+        },
+        rejectionReason: null,
+        voidedReason: null,
+        revision: 1,
+        createdAt: '2026-09-28T12:00:00.000Z',
+        completedAt: '2026-09-28T13:05:00.000Z'
+      }
+    ],
     reopenedCount: 0
   }
 ];
+
+// 待签/已完成复核单的依据指纹按当前证据与版本计算，保证演示数据自洽；
+// 已失效复核单的指纹留空（basisFingerprint: ''），仅作历史留痕。
+export const seedSignals: SignalCase[] = rawSignals.map((signal) => ({
+  ...signal,
+  reviewSheets: signal.reviewSheets.map((sheet) =>
+    sheet.status === 'voided'
+      ? sheet
+      : {
+          ...sheet,
+          basisFingerprint: evidenceBasisFingerprint(signal.evidence, signal.versions)
+        }
+  )
+}));

@@ -1,5 +1,14 @@
 import { fail } from '@sveltejs/kit';
-import { evidenceSchema, transitionSchema, versionSchema } from '$lib/models/signal';
+import {
+  assignReviewerSchema,
+  createReviewSchema,
+  evidenceSchema,
+  rejectReviewSchema,
+  signReviewSchema,
+  transitionSchema,
+  updateTaskSchema,
+  versionSchema
+} from '$lib/models/signal';
 
 export function load({ params }) {
   return { id: params.id };
@@ -64,6 +73,73 @@ export const actions = {
       },
       actor: parsed.data.author
     };
+  },
+
+  requestReview: async ({ request }) => {
+    const formData = await request.formData();
+    const parsed = createReviewSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return failure(parsed.error);
+
+    return {
+      success: true,
+      requestReview: {
+        id: parsed.data.id,
+        purpose: parsed.data.purpose,
+        actor: parsed.data.actor,
+        basisVersionId: parsed.data.basisVersionId
+      }
+    };
+  },
+
+  signReview: async ({ request }) => {
+    const formData = await request.formData();
+    const parsed = signReviewSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return failure(parsed.error);
+
+    return {
+      success: true,
+      signReview: {
+        id: parsed.data.id,
+        sheetId: parsed.data.sheetId,
+        actor: parsed.data.actor,
+        expectedRevision: parsed.data.expectedRevision,
+        checklist: {
+          versionConfirmed: formData.get('versionConfirmed') === 'on',
+          batchesConfirmed: formData.get('batchesConfirmed') === 'on',
+          tasksConfirmed: formData.get('tasksConfirmed') === 'on'
+        }
+      }
+    };
+  },
+
+  assignReviewer: async ({ request }) => {
+    const formData = await request.formData();
+    const parsed = assignReviewerSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return failure(parsed.error);
+
+    return {
+      success: true,
+      assignReviewer: parsed.data
+    };
+  },
+
+  rejectReview: async ({ request }) => {
+    const formData = await request.formData();
+    const parsed = rejectReviewSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return failure(parsed.error);
+
+    return {
+      success: true,
+      rejectReview: parsed.data
+    };
+  },
+
+  updateTask: async ({ request }) => {
+    const formData = await request.formData();
+    const parsed = updateTaskSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return failure(parsed.error);
+
+    return { success: true, updateTask: parsed.data };
   },
 
   reopen: async ({ request }) => {
